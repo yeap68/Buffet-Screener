@@ -7,7 +7,7 @@ import plotly.express as px
 
 SEC_BASE = "https://data.sec.gov"
 # 👉 Put your email so SEC lets you in politely
-HEADERS = {"User-Agent": "BuffetValueAnalyst/1.1 (contact: your_email@domain.com)"}
+HEADERS = {"User-Agent": "BuffetValueAnalyst/1.1 (Yeap Teck Hooi yeapteckhooi@gmail.com)"}
 
 def fetch_json(url: str) -> dict:
     req = urllib.request.Request(url, headers=HEADERS)
