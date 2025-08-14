@@ -9,11 +9,11 @@ SEC_BASE = "https://data.sec.gov"
 # 👉 Put your email so SEC lets you in politely
 HEADERS = {"User-Agent": "BuffetValueAnalyst/1.1 (Yeap Teck Hooi yeapteckhooi@gmail.com)"}
 
-import time, urllib.error
+import time, urllib.error  # ensure these imports exist
 
 def fetch_json(url: str) -> dict:
     last_err = None
-    for i in range(5):
+    for i in range(5):  # retry with backoff
         try:
             req = urllib.request.Request(url, headers=HEADERS)
             with urllib.request.urlopen(req, timeout=30) as r:
@@ -34,22 +34,25 @@ def fetch_json(url: str) -> dict:
 
 @st.cache_data(show_spinner=False, ttl=60*60)
 def load_ticker_map() -> Dict[str, dict]:
-    # Try primary XBRL endpoint
+    """
+    Robust SEC ticker map loader:
+    1) Try primary XBRL endpoint
+    2) Fallback to legacy file URL
+    3) If both fail, use a minimal built‑in map so the app stays usable
+    """
     sources = [
         f"{SEC_BASE}/api/xbrl/company_tickers.json",
-        "https://www.sec.gov/files/company_tickers.json",  # fallback
+        "https://www.sec.gov/files/company_tickers.json",
     ]
-    last_err = None
     for src in sources:
         try:
             data = fetch_json(src)
             if isinstance(data, dict) and data:
                 return {v["ticker"].upper(): v for v in data.values()}
-        except Exception as e:
-            last_err = e
+        except Exception:
             continue
 
-    # Final fallback: minimal hardcoded map so the app remains usable
+    # Final fallback — lets you test big tickers even if SEC blocks temporarily
     st.warning("SEC ticker map unavailable — using a limited built‑in map. Try again later for full coverage.")
     return {
         "AAPL": {"ticker": "AAPL", "cik_str": 320193},
