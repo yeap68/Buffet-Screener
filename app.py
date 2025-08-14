@@ -9,27 +9,57 @@ SEC_BASE = "https://data.sec.gov"
 # 👉 Put your email so SEC lets you in politely
 HEADERS = {"User-Agent": "BuffetValueAnalyst/1.1 (Yeap Teck Hooi yeapteckhooi@gmail.com)"}
 
+import time, urllib.error
+
 def fetch_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return jsonlib.loads(r.read().decode("utf-8"))
+    last_err = None
+    for i in range(5):
+        try:
+            req = urllib.request.Request(url, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return jsonlib.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise RuntimeError(f"URL 404 Not Found: {url}")
+            if e.code in (403, 429, 503):
+                time.sleep(1.5 * (i + 1))
+                last_err = e
+                continue
+            raise
+        except Exception as e:
+            time.sleep(1.0 * (i + 1))
+            last_err = e
+            continue
+    raise last_err
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=60*60)
 def load_ticker_map() -> Dict[str, dict]:
-    data = fetch_json(f"{SEC_BASE}/api/xbrl/company_tickers.json")
-    return {v["ticker"].upper(): v for v in data.values()}
+    # Try primary XBRL endpoint
+    sources = [
+        f"{SEC_BASE}/api/xbrl/company_tickers.json",
+        "https://www.sec.gov/files/company_tickers.json",  # fallback
+    ]
+    last_err = None
+    for src in sources:
+        try:
+            data = fetch_json(src)
+            if isinstance(data, dict) and data:
+                return {v["ticker"].upper(): v for v in data.values()}
+        except Exception as e:
+            last_err = e
+            continue
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_company_facts(cik: str) -> dict:
-    return fetch_json(f"{SEC_BASE}/api/xbrl/companyfacts/CIK{str(cik).zfill(10)}.json")
-
-def safe(vals): return [v for v in vals if v is not None and not (isinstance(v,float) and math.isnan(v))]
-def pct(a,b): return (a/b) if (a is not None and b not in (None,0)) else None
-def cagr(a,b,yrs): 
-    try: 
-        return (b/a)**(1/yrs)-1 if a and b and a>0 and yrs>0 else None
-    except: 
-        return None
+    # Final fallback: minimal hardcoded map so the app remains usable
+    st.warning("SEC ticker map unavailable — using a limited built‑in map. Try again later for full coverage.")
+    return {
+        "AAPL": {"ticker": "AAPL", "cik_str": 320193},
+        "MSFT": {"ticker": "MSFT", "cik_str": 789019},
+        "AMZN": {"ticker": "AMZN", "cik_str": 1018724},
+        "GOOGL": {"ticker": "GOOGL", "cik_str": 1652044},
+        "BRK.B": {"ticker": "BRK.B", "cik_str": 1067983},
+        "JNJ": {"ticker": "JNJ", "cik_str": 200406},
+        "PG": {"ticker": "PG", "cik_str": 80424},
+    }
 
 def pick_usd_facts(facts, concept):
     try: units = facts["facts"]["us-gaap"][concept]["units"]
